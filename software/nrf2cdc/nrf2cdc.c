@@ -1,6 +1,6 @@
 // ===================================================================================
 // Project:   NRF2CDC for nRF24L01+ 2.4GHz Transceiver USB Stick based on CH55x
-// Version:   v1.1
+// Version:   v1.2
 // Year:      2023
 // Author:    Stefan Wagner
 // Github:    https://github.com/wagiminator

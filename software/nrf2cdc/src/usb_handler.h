@@ -1,5 +1,5 @@
 // ===================================================================================
-// USB Handler for CH551, CH552 and CH554
+// USB Handler for CH551, CH552 and CH554                                     * v1.2 *
 // ===================================================================================
 
 #pragma once
@@ -7,14 +7,11 @@
 #include "usb_descr.h"
 
 // ===================================================================================
-// Endpoint Buffer
+// Variables
 // ===================================================================================
-__xdata __at (EP0_ADDR) uint8_t EP0_buffer[EP0_BUF_SIZE];     
-__xdata __at (EP1_ADDR) uint8_t EP1_buffer[EP1_BUF_SIZE];
-__xdata __at (EP2_ADDR) uint8_t EP2_buffer[2 * EP2_BUF_SIZE];
-
 #define USB_setupBuf ((PUSB_SETUP_REQ)EP0_buffer)
-extern uint8_t SetupReq;
+extern volatile uint8_t  SetupReq;
+extern volatile uint16_t SetupLen;
 
 // ===================================================================================
 // Custom External USB Handler Functions
