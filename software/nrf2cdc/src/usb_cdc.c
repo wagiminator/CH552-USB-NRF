@@ -97,8 +97,8 @@ char CDC_read(void) {
 
 // Setup CDC endpoints
 void CDC_setup(void) {
-  UEP1_DMA    = EP1_ADDR;                   // EP1 data transfer address
-  UEP2_DMA    = EP2_ADDR;                   // EP2 data transfer address
+  UEP1_DMA    = (uint16_t)EP1_buffer;       // EP1 data transfer address
+  UEP2_DMA    = (uint16_t)EP2_buffer;       // EP2 data transfer address
   UEP1_CTRL   = bUEP_AUTO_TOG               // EP1 Auto flip sync flag
               | UEP_T_RES_NAK;              // EP1 IN transaction returns NAK
   UEP2_CTRL   = bUEP_AUTO_TOG               // EP2 Auto flip sync flag
