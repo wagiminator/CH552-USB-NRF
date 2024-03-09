@@ -90,8 +90,9 @@ On Linux you do not need to install a CDC driver. On Windows you will need the [
 2. [CH551/552 Datasheet](http://www.wch-ic.com/downloads/CH552DS1_PDF.html)
 3. [SDCC Compiler](https://sdcc.sourceforge.net/)
 4. [nRF24L01+ Datasheet](https://www.sparkfun.com/datasheets/Components/SMD/nRF24L01Pluss_Preliminary_Product_Specification_v1_0.pdf)
-5. [ATtiny814 NRF2USB](https://github.com/wagiminator/ATtiny814-NRF2USB)
-6. [nRF24L01+ on Aliexpress](http://aliexpress.com/wholesale?SearchText=nrf24l01+plus+smd)
+5. [ATtiny814 USB2NRF](https://github.com/wagiminator/ATtiny814-NRF2USB)
+6. [CH32X033 USB2NRF](https://github.com/wagiminator/CH32X033-USB-NRF)
+7. [nRF24L01+ on Aliexpress](http://aliexpress.com/wholesale?SearchText=nrf24l01+plus+smd)
 
 # License
 ![license.png](https://i.creativecommons.org/l/by-sa/3.0/88x31.png)
