@@ -1,0 +1,2 @@
+# We need cooked mode.  Pio serial monitor is the tool we use.
+pio device monitor --filter send_on_enter $*
