@@ -81,7 +81,11 @@ void NRF_ISR(void) __interrupt(INT_NO_GPIO) {
 
 // Global variables
 __xdata uint8_t buffer[NRF_PAYLOAD];      // rx/tx buffer
-uint8_t hex_mode = 0;
+typedef enum class {
+  HEX_MODE = 0x80,
+  STRIP_LINE_ENDS = 0x40
+} options_t;
+options_t options = 0;
 
 // ===================================================================================
 // Print Functions and String Conversions
@@ -138,7 +142,12 @@ void CDC_printSettings(void) {
   CDC_print ("Config register: "); CDC_printByte(cfg_reg); CDC_write('\n');
   CDC_print ("Status register: "); CDC_printByte(status_reg); CDC_write('\n');
   CDC_print ("FIFO Status register: "); CDC_printByte(NRF_readfifostatus()); CDC_write('\n');
-  if(hex_mode) CDC_println  ("Hex Mode active");
+  if(options) {
+    CDC_print ("Options:");
+    CDC_print (" Hex mode "); CDC_print(options & HEX_MODE ? "ON" : "OFF");
+    CDC_print (" Strip line-ends "); CDC_print(options & STRIP_LINE_ENDS ? "ON" : "OFF");
+    CDC_write('\n');
+  }
   CDC_flush();
 }
 
@@ -196,12 +205,21 @@ void parse(void) {
     case 's': NRF_speed = hexByte(buffer + 2);
               if(NRF_speed > 2) NRF_speed = 2;
               break;
-    case 'm': if(buffer[2]=='x') hex_mode = 1; else hex_mode=0;
+    case 'o': for(char *ptr=&buffer[2]; *ptr != '\0'; ++ptr) {
+                switch(*ptr) {
+                  case 'l': options &= ~STRIP_LINE_ENDS; break;
+                  case 'L': options |=  STRIP_LINE_ENDS;  break;
+                  case 'x': options &= ~HEX_MODE; break;
+                  case 'X': options |=  HEX_MODE; break;
+                }
+              }
               break;
-    case '>': NRF_powerTX();
+    /*
+    case '>': NRF_powerTX();  // manually switch to TX mode for 200uS
               DLY_us(200);
               NRF_powerRX();
               break;
+    */
     default:  break;
   }
   NRF_configure();                                  // reconfigure the NRF
@@ -234,8 +252,9 @@ void main(void) {
       CDC_print("Read 0x"); CDC_printByte(buflen); CDC_write('\n'); 
 
       // escape unprintable
+      char ch;
       while(buflen--) {
-        char ch = buffer[bufptr++];
+        ch = buffer[bufptr++];
         if(ch >= 0x20 && ch <= 0x7f) //printable
           CDC_write(ch);
         else if(ch == '\r' || ch == '\n')
@@ -245,6 +264,8 @@ void main(void) {
           CDC_printByte(ch);
         }
       }
+      if(ch != '\n')  // add a newline if we didn't end with one
+        CDC_write('\n');
       CDC_flush();                                  // flush CDC
     }
 
@@ -255,32 +276,43 @@ void main(void) {
       buffer[bufptr++] = CDC_read();                // read 1st byte to check if it is a command
       buflen--;
       is_command = (buffer[0] == CMD_IDENT); 
-      if(!is_command && hex_mode) {
+      if(!is_command && (options & HEX_MODE)) { // hex input
         // read the input as hex digits, and truncating as below. Note invalid characters=>\0
         buffer[0] = (hexDigit(buffer[0]) << 4) + hexDigit(CDC_read()); // redo the 1st byte
         buflen--;
 
-        int outlen = buflen / 2;
-        if(outlen > NRF_PAYLOAD-1) outlen = NRF_PAYLOAD - 1;  // first byte is already buffered
         while(1) {
+          // basically pull in pairs, but \r and \n must be handled specially
           if(buflen == 0) break; char ch1 = CDC_read(); buflen--;
           if(ch1 == '\r' || ch1 == '\n') {
-            buffer[bufptr++] = ch1; if(bufptr >= NRF_PAYLOAD) break;
+            //CDC_write('#');
+            if((options & STRIP_LINE_ENDS) == 0) {
+              //CDC_write('^');
+              buffer[bufptr++] = ch1; if(bufptr >= NRF_PAYLOAD) break;
+            }
             continue;
           }
-          
+
           if(buflen == 0) break; char ch2 = CDC_read(); buflen--;
           if(ch2 == '\r' || ch2 == '\n') {
             buffer[bufptr++] = hexDigit(ch1) << 4; if(bufptr >= NRF_PAYLOAD) break;
-            buffer[bufptr++] = ch2; if(bufptr >= NRF_PAYLOAD) break;
+            if((options & STRIP_LINE_ENDS) == 0) {
+              buffer[bufptr++] = ch2; if(bufptr >= NRF_PAYLOAD) break;
+            }
             continue;
           }
           buffer[bufptr++] = (hexDigit(ch1) << 4) + hexDigit(ch2);
           if(bufptr >= NRF_PAYLOAD) break;
         }
-      } else {
+      } else { // normal input
         if(buflen > NRF_PAYLOAD-1) buflen = NRF_PAYLOAD-1; // restrict length to max payload. First byte already buffered
-        while(buflen--) buffer[bufptr++] = CDC_read();// get data from CDC
+        while(buflen--) {
+          char ch = CDC_read(); // get data from CDC
+          if(ch != '\r' && ch != '\n')            // output non-lineend character
+            buffer[bufptr++] = ch;
+          else if((options & STRIP_LINE_ENDS) == 0) // output lineend if we aren't stripping
+            buffer[bufptr++] = ch;// get data from CDC
+          }
       }
 
       if(is_command) parse();           // is it a command? -> parse
