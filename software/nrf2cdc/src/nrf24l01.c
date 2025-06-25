@@ -14,6 +14,7 @@
 
 // NRF registers
 #define NRF_REG_CONFIG        0x00              // configuration register
+#define NRF_REG_EN_AA         0x01              // Auto Ack enable
 #define NRF_REG_SETUP_AW      0x03              // Address width register
 #define NRF_REG_RF_CH         0x05              // RF frequency channel
 #define NRF_REG_RF_SETUP      0x06              // RF setup register
@@ -137,6 +138,7 @@ void NRF_configure(void) {
   NRF_writeRegister(NRF_REG_DYNPD,    0x3F);            // enable dynamic payload length
   NRF_writeRegister(NRF_REG_SETUP_AW, 0x03);            // enable dynamic payload length
   NRF_writeCommand(NRF_CMD_FLUSH_RX);                   // flush RX FIFO
+  NRF_writeRegister(NRF_REG_EN_AA, 0x3F);               // auto-ack all pipes
   NRF_powerRX();                                        // switch to RX Mode
 }
 
