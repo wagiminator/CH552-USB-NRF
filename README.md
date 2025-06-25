@@ -31,9 +31,9 @@ Open a serial monitor and set the correct serial port (BAUD rate doesn't matter)
 |t|set TX address|!t7B271F1F1F|addresses are 5 bytes, LSB first|
 |r|set RX address|!r41C355AA55|addresses are 5 bytes, LSB first|
 |s|set speed|!s02|data rate (00:250kbps, 01:1Mbps, 02:2Mbps)|
-|o|set options|!oXL| Options are X (treat input as hex) and L (strip \r and \n from send. Capital X and L set the options, and lower case x and l unset them.|
+|o|set options|!oXL| Options are X (treat input as hex) and L (strip \r and \n from send). Capital X and L set the options, and lower case x and l unset them.|
 
-Enter just the exclamation mark ('!') for the actual NRF settings to be printed in the serial monitor. The selected settings are saved in the data flash and are retained even after a restart.
+Enter just the exclamation mark ('!') for the actual NRF settings to be printed in the serial monitor. With the exception of 'o' options, the selected settings are saved in the data flash and are retained even after a restart.
 
 ## NRF to HID
 - in development...
