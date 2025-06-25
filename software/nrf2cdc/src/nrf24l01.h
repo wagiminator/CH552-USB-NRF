@@ -22,3 +22,6 @@ void NRF_configure(void);                       // configure NRF
 uint8_t NRF_available(void);                    // check if data is available for reading
 uint8_t NRF_readPayload(__xdata uint8_t *buf); // read payload into buffer, return length
 void NRF_writePayload(__xdata uint8_t *buf, uint8_t len);  // send a data package (max length 32)
+uint8_t NRF_readconfig(void);
+uint8_t NRF_readstatus(void);
+uint8_t NRF_readfifostatus(void);
