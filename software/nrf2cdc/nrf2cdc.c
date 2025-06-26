@@ -81,11 +81,6 @@ void NRF_ISR(void) __interrupt(INT_NO_GPIO) {
 
 // Global variables
 __xdata uint8_t buffer[NRF_PAYLOAD];      // rx/tx buffer
-typedef enum class {
-  HEX_MODE = 0x80,
-  STRIP_LINE_ENDS = 0x40
-} options_t;
-options_t options = 0;
 
 // ===================================================================================
 // Print Functions and String Conversions
@@ -144,8 +139,10 @@ void CDC_printSettings(void) {
   CDC_print ("FIFO Status register: "); CDC_printByte(NRF_readfifostatus()); CDC_write('\n');
   if(options) {
     CDC_print ("Options:");
-    CDC_print (" Hex mode "); CDC_print(options & HEX_MODE ? "ON" : "OFF");
-    CDC_print (" Strip line-ends "); CDC_print(options & STRIP_LINE_ENDS ? "ON" : "OFF");
+    if(options & HEX_MODE) CDC_print (" Hex mode,");
+    if(options & STRIP_LINE_ENDS) CDC_print (" Strip line-ends,");
+    if(options & AUTO_ACK) CDC_print (" Auto ACK,");
+    if(options & DYNAMIC_PAYLOAD) CDC_print(" Dynamic payload");
     CDC_write('\n');
   }
   CDC_flush();
@@ -160,15 +157,34 @@ void NRF_interrupt()
 // Data Flash Implementation
 // ===================================================================================
 
+typedef struct {
+  char    f_ident[2];
+  uint8_t f_channel;
+  uint8_t f_speed;
+  char    f_tx_address[5];
+  char    f_rx_address[5];
+  uint8_t f_options;
+} flash_t;
+
+typedef enum {
+  fo_ident = 0,
+  fo_channel = 2,
+  fo_speed = 3,
+  fo_tx_address = 4,
+  fo_rx_address = 9,
+  fo_options = 15
+} flash_offsets_t;
+
 // FLASH write user settings
 void FLASH_writeSettings(void) {
   uint8_t i;
-  FLASH_update(2, NRF_channel);
-  FLASH_update(3, NRF_speed);
+  FLASH_update(fo_channel, NRF_channel);
+  FLASH_update(fo_speed, NRF_speed);
   for(i=0; i<5; i++) {
-    FLASH_update(4+i, NRF_tx_addr[i]);
-    FLASH_update(9+i, NRF_rx_addr[i]);
+    FLASH_update(fo_tx_address+i, NRF_tx_addr[i]);
+    FLASH_update(fo_rx_address+i, NRF_rx_addr[i]);
   }
+  FLASH_update(fo_options, options);
 }
 
 // FLASH read user settings; if FLASH values are invalid, write defaults
@@ -176,12 +192,13 @@ void FLASH_readSettings(void) {
   uint8_t i;
   uint16_t identifier = ((uint16_t)FLASH_read(1) << 8) | FLASH_read(0);
   if (identifier == FLASH_IDENT) {
-    NRF_channel =  FLASH_read(2);
-    NRF_speed   =  FLASH_read(3);
+    NRF_channel =  FLASH_read(fo_channel);
+    NRF_speed   =  FLASH_read(fo_speed);
     for(i=0; i<5; i++) {
-      NRF_tx_addr[i] = FLASH_read(4+i);
-      NRF_rx_addr[i] = FLASH_read(9+i);
+      NRF_tx_addr[i] = FLASH_read(fo_tx_address+i);
+      NRF_rx_addr[i] = FLASH_read(fo_rx_address+i);
     }
+    options = FLASH_read(fo_options);
   }
   else {
     FLASH_update(0, (uint8_t)FLASH_IDENT);
@@ -208,11 +225,17 @@ void parse(void) {
     case 'o': for(char *ptr=&buffer[2]; *ptr != '\0'; ++ptr) {
                 switch(*ptr) {
                   case 'l': options &= ~STRIP_LINE_ENDS; break;
-                  case 'L': options |=  STRIP_LINE_ENDS;  break;
+                  case 'L': options |=  STRIP_LINE_ENDS; break;
                   case 'x': options &= ~HEX_MODE; break;
                   case 'X': options |=  HEX_MODE; break;
+                  case 'a': options &= ~AUTO_ACK; break;
+                  case 'A': options |=  AUTO_ACK; break;
+                  case 'd': options &= ~DYNAMIC_PAYLOAD; break;
+                  case 'D': options |=  DYNAMIC_PAYLOAD; break;
+                  default: goto endoptions;
                 }
               }
+              endoptions:
               break;
     /*
     case '>': NRF_powerTX();  // manually switch to TX mode for 200uS
@@ -315,8 +338,10 @@ void main(void) {
           }
       }
 
-      if(is_command) parse();           // is it a command? -> parse
-      else {                                        // not a command?
+      if(is_command) {
+        buffer[bufptr] = '\0';
+        parse();           // is it a command? -> parse
+      } else {                                        // not a command?
         PIN_low(PIN_LED);                           // switch on LED
         //CDC_write('>');
         NRF_writePayload(buffer, bufptr);           // send the buffer via NRF

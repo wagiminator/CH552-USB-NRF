@@ -40,6 +40,7 @@ __xdata uint8_t NRF_tx_addr[] = {0xE7, 0xE7, 0xE7, 0xE7, 0xE7};
 __xdata uint8_t NRF_rx_addr[] = {0xC2, 0xC2, 0xC2, 0xC2, 0xC2};
 __code uint8_t  NRF_SETUP[]   = {0x26, 0x06, 0x0E};
 __code uint8_t* NRF_STR[]     = {"250k", "1M", "2M"};
+__xdata options_t options = 0;
 
 // ===================================================================================
 // nRF24L01+ Implementation - SPI Communication Functions
@@ -132,13 +133,13 @@ void NRF_configure(void) {
   NRF_writeBuffer(NRF_REG_RX_ADDR_P1, NRF_rx_addr, 5);  // set RX address
   NRF_writeBuffer(NRF_REG_TX_ADDR,    NRF_tx_addr, 5);  // set TX address
   NRF_writeBuffer(NRF_REG_RX_ADDR_P0, NRF_tx_addr, 5);  // set TX address for auto-ACK
-  NRF_writeRegister(NRF_REG_RF_CH, NRF_channel);        // set channel
+  NRF_writeRegister(NRF_REG_RF_CH,    NRF_channel);        // set channel
   NRF_writeRegister(NRF_REG_RF_SETUP, NRF_SETUP[NRF_speed]); // set speed and power
   NRF_writeRegister(NRF_REG_FEATURE,  0x04);            // enable dynamic payload length
-  NRF_writeRegister(NRF_REG_DYNPD,    0x3F);            // enable dynamic payload length
-  NRF_writeRegister(NRF_REG_SETUP_AW, 0x03);            // enable dynamic payload length
+  NRF_writeRegister(NRF_REG_DYNPD,    (options & DYNAMIC_PAYLOAD) ? 0x3F : 00);            // enable dynamic payload length
+  NRF_writeRegister(NRF_REG_SETUP_AW, 0x03);            // Address width of 5
   NRF_writeCommand(NRF_CMD_FLUSH_RX);                   // flush RX FIFO
-  NRF_writeRegister(NRF_REG_EN_AA, 0x3F);               // auto-ack all pipes
+  NRF_writeRegister(NRF_REG_EN_AA, (options & AUTO_ACK) ? 0x3F : 0x00);   // auto-ack all pipes
   NRF_powerRX();                                        // switch to RX Mode
 }
 
