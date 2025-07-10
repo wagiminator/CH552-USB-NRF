@@ -16,6 +16,7 @@
 #define NRF_REG_CONFIG        0x00              // configuration register
 #define NRF_REG_EN_AA         0x01              // Auto Ack enable
 #define NRF_REG_SETUP_AW      0x03              // Address width register
+#define NRF_REG_SETUP_RETR    0x04              // Transmit control
 #define NRF_REG_RF_CH         0x05              // RF frequency channel
 #define NRF_REG_RF_SETUP      0x06              // RF setup register
 #define NRF_REG_STATUS        0x07              // status register
@@ -140,6 +141,7 @@ void NRF_configure(void) {
   NRF_writeRegister(NRF_REG_SETUP_AW, 0x03);            // Address width of 5
   NRF_writeCommand(NRF_CMD_FLUSH_RX);                   // flush RX FIFO
   NRF_writeRegister(NRF_REG_EN_AA, (options & AUTO_ACK) ? 0x3F : 0x00);   // auto-ack all pipes
+  NRF_writeRegister(NRF_REG_SETUP_RETR, 0x4F);
   NRF_powerRX();                                        // switch to RX Mode
 }
 

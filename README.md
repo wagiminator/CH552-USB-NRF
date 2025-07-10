@@ -35,6 +35,12 @@ Open a serial monitor and set the correct serial port (BAUD rate doesn't matter)
 
 Enter just the exclamation mark ('!') for the actual NRF settings and options to be printed in the serial monitor. The selected settings and options are saved in the data flash and are retained even after a restart.
 
+## About TX and RX addresses
+If you are coming from a background in Ethernet or WiFi networking, you may misunderstand the way the nRF24L01 uses addresses.  The RX and TX addresses do not represent nodes, or even endpoints on a node. Instead they may be thought of as <i>tags</i>.
+
+The TX address (<i>tag</i>) is inserted into every packet the nRF24L01 transmits. Any radio interested in receiving packets with that tag opens a pipeline specifying the tag (i.e. sets the tag as an RX address). Note that the TX address is the only address in the packet protocol.  The receiver sends ACK packets using the same tag. This means the transmitter also listens for its TX tag.
+
+
 ## NRF to HID
 - in development...
 
