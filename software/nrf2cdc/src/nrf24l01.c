@@ -6,6 +6,7 @@
 
 #include "nrf24l01.h"
 #include "spi.h"
+#include "delay.h"
 
 // ===================================================================================
 // nRF24L01+ Implementation - Definitions and Variables
@@ -13,6 +14,9 @@
 
 // NRF registers
 #define NRF_REG_CONFIG        0x00              // configuration register
+#define NRF_REG_EN_AA         0x01              // Auto Ack enable
+#define NRF_REG_SETUP_AW      0x03              // Address width register
+#define NRF_REG_SETUP_RETR    0x04              // Transmit control
 #define NRF_REG_RF_CH         0x05              // RF frequency channel
 #define NRF_REG_RF_SETUP      0x06              // RF setup register
 #define NRF_REG_STATUS        0x07              // status register
@@ -37,6 +41,7 @@ __xdata uint8_t NRF_tx_addr[] = {0xE7, 0xE7, 0xE7, 0xE7, 0xE7};
 __xdata uint8_t NRF_rx_addr[] = {0xC2, 0xC2, 0xC2, 0xC2, 0xC2};
 __code uint8_t  NRF_SETUP[]   = {0x26, 0x06, 0x0E};
 __code uint8_t* NRF_STR[]     = {"250k", "1M", "2M"};
+__xdata options_t options = 0;
 
 // ===================================================================================
 // nRF24L01+ Implementation - SPI Communication Functions
@@ -46,6 +51,11 @@ __code uint8_t* NRF_STR[]     = {"250k", "1M", "2M"};
 void NRF_init(void) {
   SPI_init();
   NRF_configure();
+
+  #ifdef USE_NRF_INT
+  IE_GPIO = 1;
+  GPIO_IE = bIE_IO_EDGE | bIE_P3_1_LO;
+  #endif
 }
 
 // NRF send a command
@@ -103,8 +113,10 @@ void NRF_powerDown(void) {
 // NRF switch to RX mode
 void NRF_powerRX(void) {
   PIN_low(PIN_CE);                                      // return to Standby-I
+  //DLY_us(100);
   NRF_writeRegister(NRF_REG_CONFIG, NRF_CONFIG | 0x03); // PWR_UP + PRIM_RX
   PIN_high(PIN_CE);                                     // switch to RX Mode
+  DLY_us(200);
 }
 
 // NRF switch to TX mode
@@ -112,6 +124,8 @@ void NRF_powerTX(void) {
   PIN_low(PIN_CE);                                      // return to Standby-I
   NRF_writeRegister(NRF_REG_CONFIG, NRF_CONFIG | 0x02); // PWR_UP + !PRIM_RX
   PIN_high(PIN_CE);                                     // switch to TX Mode
+  DLY_us(200);
+  //PIN_low(PIN_CE);
 }
 
 // NRF configure
@@ -120,12 +134,30 @@ void NRF_configure(void) {
   NRF_writeBuffer(NRF_REG_RX_ADDR_P1, NRF_rx_addr, 5);  // set RX address
   NRF_writeBuffer(NRF_REG_TX_ADDR,    NRF_tx_addr, 5);  // set TX address
   NRF_writeBuffer(NRF_REG_RX_ADDR_P0, NRF_tx_addr, 5);  // set TX address for auto-ACK
-  NRF_writeRegister(NRF_REG_RF_CH, NRF_channel);        // set channel
+  NRF_writeRegister(NRF_REG_RF_CH,    NRF_channel);        // set channel
   NRF_writeRegister(NRF_REG_RF_SETUP, NRF_SETUP[NRF_speed]); // set speed and power
   NRF_writeRegister(NRF_REG_FEATURE,  0x04);            // enable dynamic payload length
-  NRF_writeRegister(NRF_REG_DYNPD,    0x3F);            // enable dynamic payload length
+  NRF_writeRegister(NRF_REG_DYNPD,    (options & DYNAMIC_PAYLOAD) ? 0x3F : 00);            // enable dynamic payload length
+  NRF_writeRegister(NRF_REG_SETUP_AW, 0x03);            // Address width of 5
   NRF_writeCommand(NRF_CMD_FLUSH_RX);                   // flush RX FIFO
+  NRF_writeRegister(NRF_REG_EN_AA, (options & AUTO_ACK) ? 0x3F : 0x00);   // auto-ack all pipes
+  NRF_writeRegister(NRF_REG_SETUP_RETR, 0x4F);
   NRF_powerRX();                                        // switch to RX Mode
+}
+
+//NOTE: Confirm configuration register (for testing)
+uint8_t NRF_readconfig(void) {
+  return(NRF_readRegister(NRF_REG_CONFIG));
+}
+
+//NOTE: Confirm status register (for testing)
+uint8_t NRF_readstatus(void) {
+  return(NRF_readRegister(NRF_REG_STATUS));
+}
+
+//NOTE: Confirm FIFO status register (for testing)
+uint8_t NRF_readfifostatus(void) {
+  return(NRF_readRegister(NRF_REG_FIFO_STATUS));
 }
 
 // Check if data is available for reading

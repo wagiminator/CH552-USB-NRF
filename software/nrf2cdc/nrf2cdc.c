@@ -74,6 +74,11 @@ void USB_ISR(void) __interrupt(INT_NO_USB) {
   USB_interrupt();
 }
 
+void NRF_interrupt(void);
+void NRF_ISR(void) __interrupt(INT_NO_GPIO) {
+  NRF_interrupt();
+}
+
 // Global variables
 __xdata uint8_t buffer[NRF_PAYLOAD];      // rx/tx buffer
 
@@ -122,26 +127,64 @@ void hexAddress(uint8_t *sptr, uint8_t *aptr) {
 
 // Print the current NRF settings via CDC
 void CDC_printSettings(void) {
+  uint8_t cfg_reg = NRF_readconfig();
+  uint8_t status_reg = NRF_readstatus();
   CDC_println("# nRF24L01+ Configuration:");
   CDC_print  ("# RF channel: "); CDC_printByte (NRF_channel);    CDC_write('\n');
   CDC_print  ("# TX address: "); CDC_printBytes(NRF_tx_addr, 5); CDC_write('\n');
   CDC_print  ("# RX address: "); CDC_printBytes(NRF_rx_addr, 5); CDC_write('\n');
   CDC_print  ("# Data rate:  "); CDC_print(NRF_STR[NRF_speed]);  CDC_println("bps");
+  CDC_print ("Config register: "); CDC_printByte(cfg_reg); CDC_write('\n');
+  CDC_print ("Status register: "); CDC_printByte(status_reg); CDC_write('\n');
+  CDC_print ("FIFO Status register: "); CDC_printByte(NRF_readfifostatus()); CDC_write('\n');
+  if(options) {
+    CDC_print ("Options:");
+    if(options & HEX_MODE) CDC_print (" Hex mode,");
+    if(options & STRIP_LINE_ENDS) CDC_print (" Strip line-ends,");
+    if(options & AUTO_ACK) CDC_print (" Auto ACK,");
+    if(options & DYNAMIC_PAYLOAD) CDC_print(" Dynamic payload");
+    CDC_write('\n');
+  }
+  CDC_flush();
+}
+
+void NRF_interrupt()
+{
+  CDC_write('@');
 }
 
 // ===================================================================================
 // Data Flash Implementation
 // ===================================================================================
 
+typedef struct {
+  char    f_ident[2];
+  uint8_t f_channel;
+  uint8_t f_speed;
+  char    f_tx_address[5];
+  char    f_rx_address[5];
+  uint8_t f_options;
+} flash_t;
+
+typedef enum {
+  fo_ident = 0,
+  fo_channel = 2,
+  fo_speed = 3,
+  fo_tx_address = 4,
+  fo_rx_address = 9,
+  fo_options = 15
+} flash_offsets_t;
+
 // FLASH write user settings
 void FLASH_writeSettings(void) {
   uint8_t i;
-  FLASH_update(2, NRF_channel);
-  FLASH_update(3, NRF_speed);
+  FLASH_update(fo_channel, NRF_channel);
+  FLASH_update(fo_speed, NRF_speed);
   for(i=0; i<5; i++) {
-    FLASH_update(4+i, NRF_tx_addr[i]);
-    FLASH_update(9+i, NRF_rx_addr[i]);
+    FLASH_update(fo_tx_address+i, NRF_tx_addr[i]);
+    FLASH_update(fo_rx_address+i, NRF_rx_addr[i]);
   }
+  FLASH_update(fo_options, options);
 }
 
 // FLASH read user settings; if FLASH values are invalid, write defaults
@@ -149,12 +192,13 @@ void FLASH_readSettings(void) {
   uint8_t i;
   uint16_t identifier = ((uint16_t)FLASH_read(1) << 8) | FLASH_read(0);
   if (identifier == FLASH_IDENT) {
-    NRF_channel =  FLASH_read(2);
-    NRF_speed   =  FLASH_read(3);
+    NRF_channel =  FLASH_read(fo_channel);
+    NRF_speed   =  FLASH_read(fo_speed);
     for(i=0; i<5; i++) {
-      NRF_tx_addr[i] = FLASH_read(4+i);
-      NRF_rx_addr[i] = FLASH_read(9+i);
+      NRF_tx_addr[i] = FLASH_read(fo_tx_address+i);
+      NRF_rx_addr[i] = FLASH_read(fo_rx_address+i);
     }
+    options = FLASH_read(fo_options);
   }
   else {
     FLASH_update(0, (uint8_t)FLASH_IDENT);
@@ -178,6 +222,27 @@ void parse(void) {
     case 's': NRF_speed = hexByte(buffer + 2);
               if(NRF_speed > 2) NRF_speed = 2;
               break;
+    case 'o': for(char *ptr=&buffer[2]; *ptr != '\0'; ++ptr) {
+                switch(*ptr) {
+                  case 'l': options &= ~STRIP_LINE_ENDS; break;
+                  case 'L': options |=  STRIP_LINE_ENDS; break;
+                  case 'x': options &= ~HEX_MODE; break;
+                  case 'X': options |=  HEX_MODE; break;
+                  case 'a': options &= ~AUTO_ACK; break;
+                  case 'A': options |=  AUTO_ACK; break;
+                  case 'd': options &= ~DYNAMIC_PAYLOAD; break;
+                  case 'D': options |=  DYNAMIC_PAYLOAD; break;
+                  default: goto endoptions;
+                }
+              }
+              endoptions:
+              break;
+    /*
+    case '>': NRF_powerTX();  // manually switch to TX mode for 200uS
+              DLY_us(200);
+              NRF_powerRX();
+              break;
+    */
     default:  break;
   }
   NRF_configure();                                  // reconfigure the NRF
@@ -207,19 +272,81 @@ void main(void) {
       PIN_low(PIN_LED);                             // switch on LED
       bufptr = 0;                                   // reset buffer pointer
       buflen = NRF_readPayload(buffer);             // read payload into buffer
-      while(buflen--) CDC_write(buffer[bufptr++]);  // write buffer via USB CDC
+      CDC_print("Read 0x"); CDC_printByte(buflen); CDC_write('\n'); 
+
+      // escape unprintable
+      char ch;
+      while(buflen--) {
+        ch = buffer[bufptr++];
+        if(ch >= 0x20 && ch <= 0x7f) //printable
+          CDC_write(ch);
+        else if(ch == '\r' || ch == '\n')
+          CDC_write(ch);
+        else {
+          CDC_write('\\');
+          CDC_printByte(ch);
+        }
+      }
+      if(ch != '\n')  // add a newline if we didn't end with one
+        CDC_write('\n');
       CDC_flush();                                  // flush CDC
     }
 
     buflen = CDC_available();                       // get number of bytes in CDC IN
+    uint8_t is_command;
     if(buflen) {                                    // something coming in via USB?
-      bufptr = 0;                                   // reset buffer pointer
-      if(buflen > NRF_PAYLOAD) buflen = NRF_PAYLOAD;// restrict length to max payload
-      while(buflen--) buffer[bufptr++] = CDC_read();// get data from CDC
-      if(buffer[0] == CMD_IDENT) parse();           // is it a command? -> parse
-      else {                                        // not a command?
+      bufptr = 0;                                   // reset output buffer pointer
+      buffer[bufptr++] = CDC_read();                // read 1st byte to check if it is a command
+      buflen--;
+      is_command = (buffer[0] == CMD_IDENT); 
+      if(!is_command && (options & HEX_MODE)) { // hex input
+        // read the input as hex digits, and truncating as below. Note invalid characters=>\0
+        buffer[0] = (hexDigit(buffer[0]) << 4) + hexDigit(CDC_read()); // redo the 1st byte
+        buflen--;
+
+        while(1) {
+          // basically pull in pairs, but \r and \n must be handled specially
+          if(buflen == 0) break; char ch1 = CDC_read(); buflen--;
+          if(ch1 == '\r' || ch1 == '\n') {
+            //CDC_write('#');
+            if((options & STRIP_LINE_ENDS) == 0) {
+              //CDC_write('^');
+              buffer[bufptr++] = ch1; if(bufptr >= NRF_PAYLOAD) break;
+            }
+            continue;
+          }
+
+          if(buflen == 0) break; char ch2 = CDC_read(); buflen--;
+          if(ch2 == '\r' || ch2 == '\n') {
+            buffer[bufptr++] = hexDigit(ch1) << 4; if(bufptr >= NRF_PAYLOAD) break;
+            if((options & STRIP_LINE_ENDS) == 0) {
+              buffer[bufptr++] = ch2; if(bufptr >= NRF_PAYLOAD) break;
+            }
+            continue;
+          }
+          buffer[bufptr++] = (hexDigit(ch1) << 4) + hexDigit(ch2);
+          if(bufptr >= NRF_PAYLOAD) break;
+        }
+      } else { // normal input
+        if(buflen > NRF_PAYLOAD-1) buflen = NRF_PAYLOAD-1; // restrict length to max payload. First byte already buffered
+        while(buflen--) {
+          char ch = CDC_read(); // get data from CDC
+          if(ch != '\r' && ch != '\n')            // output non-lineend character
+            buffer[bufptr++] = ch;
+          else if((options & STRIP_LINE_ENDS) == 0) // output lineend if we aren't stripping
+            buffer[bufptr++] = ch;// get data from CDC
+          }
+      }
+
+      if(is_command) {
+        buffer[bufptr] = '\0';
+        parse();           // is it a command? -> parse
+      } else {                                        // not a command?
         PIN_low(PIN_LED);                           // switch on LED
+        //CDC_write('>');
         NRF_writePayload(buffer, bufptr);           // send the buffer via NRF
+        CDC_print("Sent 0x"); CDC_printByte(bufptr); CDC_write('\n'); 
+        CDC_flush();
       }
     }
 
